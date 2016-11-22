@@ -16,7 +16,7 @@ var message = require('./controllers/message');
 var topic = require('./controllers/topic');
 var reply = require('./controllers/reply');
 var rss = require('./controllers/rss');
-var staticController  = require('./controllers/static');
+var staticController = require('./controllers/static');
 var auth = require('./middlewares/auth');
 var limit = require('./middlewares/limit');
 var github = require('./controllers/github');
@@ -39,29 +39,32 @@ if (config.allow_sign_up) {
   router.get('/signup', sign.showSignup);  // 跳转到注册页面
   router.post('/signup', sign.signup);  // 提交注册信息
 } else {
-  router.get('/signup', configMiddleware.github, passport.authenticate('github'));  // 进行github验证
+  // 进行github验证
+  router.get('/signup', function (req, res, next) {
+    return res.redirect('/auth/github')
+  });
 }
 router.post('/signout', sign.signout);  // 登出
 router.get('/signin', sign.showLogin);  // 进入登录页面
 router.post('/signin', sign.login);  // 登录校验
-router.get('/active_account', sign.active_account);  //帐号激活
+router.get('/active_account', sign.activeAccount);  //帐号激活
 
 router.get('/search_pass', sign.showSearchPass);  // 找回密码页面
 router.post('/search_pass', sign.updateSearchPass);  // 更新密码
-router.get('/reset_pass', sign.reset_pass);  // 进入重置密码页面
-router.post('/reset_pass', sign.update_pass);  // 更新密码
+router.get('/reset_pass', sign.resetPass);  // 进入重置密码页面
+router.post('/reset_pass', sign.updatePass);  // 更新密码
 
 // user controller
 router.get('/user/:name', user.index); // 用户个人主页
 router.get('/setting', auth.userRequired, user.showSetting); // 用户个人设置页
 router.post('/setting', auth.userRequired, user.setting); // 提交个人信息设置
-router.get('/stars', user.show_stars); // 显示所有达人列表页
+router.get('/stars', user.listStars); // 显示所有达人列表页
 router.get('/users/top100', user.top100);  // 显示积分前一百用户页
-router.get('/user/:name/collections', user.get_collect_topics);  // 用户收藏的所有话题页
-router.get('/user/:name/topics', user.list_topics);  // 用户发布的所有话题页
-router.get('/user/:name/replies', user.list_replies);  // 用户参与的所有回复页
-router.post('/user/set_star', auth.adminRequired, user.toggle_star); // 把某用户设为达人
-router.post('/user/cancel_star', auth.adminRequired, user.toggle_star);  // 取消某用户的达人身份
+router.get('/user/:name/collections', user.listCollectedTopics);  // 用户收藏的所有话题页
+router.get('/user/:name/topics', user.listTopics);  // 用户发布的所有话题页
+router.get('/user/:name/replies', user.listReplies);  // 用户参与的所有回复页
+router.post('/user/set_star', auth.adminRequired, user.toggleStar); // 把某用户设为达人
+router.post('/user/cancel_star', auth.adminRequired, user.toggleStar);  // 取消某用户的达人身份
 router.post('/user/:name/block', auth.adminRequired, user.block);  // 禁言某用户
 router.post('/user/:name/delete_all', auth.adminRequired, user.deleteAll);  // 删除某用户所有发言
 
@@ -82,14 +85,14 @@ router.post('/topic/:tid/lock', auth.adminRequired, topic.lock); // 锁定主题
 router.post('/topic/:tid/delete', auth.userRequired, topic.delete);
 
 // 保存新建的文章
-router.post('/topic/create', auth.userRequired, limit.postInterval, topic.put);
+router.post('/topic/create', auth.userRequired, limit.peruserperday('create_topic', config.create_post_per_day, {showJson: false}), topic.put);
 
 router.post('/topic/:tid/edit', auth.userRequired, topic.update);
 router.post('/topic/collect', auth.userRequired, topic.collect); // 关注某话题
 router.post('/topic/de_collect', auth.userRequired, topic.de_collect); // 取消关注某话题
 
 // reply controller
-router.post('/:topic_id/reply', auth.userRequired, limit.postInterval, reply.add); // 提交一级回复
+router.post('/:topic_id/reply', auth.userRequired, limit.peruserperday('create_reply', config.create_reply_per_day, {showJson: false}), reply.add); // 提交一级回复
 router.get('/reply/:reply_id/edit', auth.userRequired, reply.showEdit); // 修改自己的评论页
 router.post('/reply/:reply_id/edit', auth.userRequired, reply.update); // 修改某评论
 router.post('/reply/:reply_id/delete', auth.userRequired, reply.delete); // 删除某评论
@@ -112,8 +115,15 @@ router.get('/auth/github/callback',
   passport.authenticate('github', { failureRedirect: '/signin' }),
   github.callback);
 router.get('/auth/github/new', github.new);
-router.post('/auth/github/create', github.create);
+router.post('/auth/github/create', limit.peripperday('create_user_per_ip', config.create_user_per_ip, {showJson: false}), github.create);
 
 router.get('/search', search.index);
+
+if (!config.debug) { // 这个兼容破坏了不少测试
+	router.get('/:name', function (req, res) {
+	  res.redirect('/user/' + req.params.name)
+	})
+}
+
 
 module.exports = router;
